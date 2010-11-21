@@ -166,6 +166,37 @@ function ldap_realname_from_username( $p_username ) {
 }
 
 /**
+ * Gets a user's access levels given the id.
+ *
+ * @param int $p_user_id  The user id.
+ * @return array access levels.
+ */
+function ldap_access_level( $p_user_id ) {
+	$t_username = user_get_field( $p_user_id, 'username' );
+	return ldap_access_level_from_username( $t_username );
+}
+
+/**
+ * Gets a user's access levels given their user name.
+ *
+ * @param string $p_username The user's name.
+ * @return array The user's access levels.
+ */
+function ldap_access_level_from_username( $p_username ) {
+	if ( ldap_simulation_is_enabled() ) {
+		return ldap_simulatiom_access_level_from_username( $p_username );
+	}
+
+	$t_ldap_access_level_field	= config_get( 'ldap_access_level_field' );
+	$t_access_level = ldap_get_field_from_username( $p_username, $t_ldap_access_level_field, true );
+	if ( $t_access_level === null ) {
+		return array();
+	}
+
+	return $t_access_level;
+}
+
+/**
  * Escapes the LDAP string to disallow injection.
  *
  * @param string $p_string The string to escape.
@@ -189,9 +220,10 @@ function ldap_escape_string( $p_string ) {
  *
  * @param string $p_username The user name.
  * @param string $p_field The LDAP field name.
- * @return string The field value or null if not found.
+ * @param bool $p_multi_valued optional Whether the entry is multi-valued.
+ * @return mixed The field value in string if single-value, or in array if multi-value. Returns null if not found.
  */
-function ldap_get_field_from_username( $p_username, $p_field ) {
+function ldap_get_field_from_username( $p_username, $p_field, $p_multi_valued = false ) {
 	$t_ldap_organization    = config_get( 'ldap_organization' );
 	$t_ldap_root_dn         = config_get( 'ldap_root_dn' );
 	$t_ldap_uid_field		= config_get( 'ldap_uid_field' );
@@ -236,8 +268,26 @@ function ldap_get_field_from_username( $p_username, $p_field ) {
 		return null;
 	}
 
-	$t_value = $t_info[0][$p_field][0];
-	log_event( LOG_LDAP, "Found value '{$t_value}' for field '{$p_field}'." );
+	# If the attribute doesn't exist, return null.
+	if ( !array_key_exists( $p_field, $t_info[0] ) ) {
+		log_event( LOG_LDAP, "Matches found, but no requested attributes." );
+		return null;
+	}
+
+	if ( !$p_multi_valued ) {
+		$t_value = $t_info[0][$p_field][0];
+		log_event( LOG_LDAP, "Found value '{$t_value}' for field '{$p_field}'." );
+	} else {
+		$t_value = array();
+		for ( $i = 0; $i < $t_info[0][$p_field]['count']; $i++ ) {
+			$t_value[] = $t_info[0][$p_field][$i];
+			log_event( LOG_LDAP, "Found value '{$t_value}' for field '{$p_field}'." );
+		}
+		# Return null if the entry doesn't exist
+		if ( !count( $t_value ) ) {
+			$t_value = null;
+		}
+	}
 
 	return $t_value;
 }
@@ -346,6 +396,49 @@ function ldap_authenticate_by_username( $p_username, $p_password ) {
 				$t_email = ldap_email_from_username( $p_username );
 				user_set_field( $t_user_id, 'email', $t_email );
 			}
+
+			if ( ON == config_get( 'use_ldap_access_level' ) ) {
+				# Get access levels of the user
+				$t_access_levels = ldap_access_level_from_username( $p_username );
+
+				# Find the maximum global and per-project access levels a user gets
+				$t_global_access_level = 0;
+				$t_project_access_levels = array();
+				foreach ( $t_access_levels as $t_access_level ) {
+					$t_pos = strrpos( $t_access_level, ":" );
+					if ( $t_pos === false ) {
+						# global access level
+						if ( $t_access_level > $t_global_access_level ) {
+							$t_global_access_level = (int) $t_access_level;
+						}
+					} else {
+						# project access level
+						$t_project_name = substr( $t_access_level, 0, $t_pos );
+						$t_project_access_level = substr( $t_access_level, $t_pos + 1 );
+						if ( !array_key_exists( $t_project_name, $t_project_access_levels )
+							|| $t_project_access_level > $t_project_access_levels[$t_project_name] ) {
+							$t_project_access_levels[$t_project_name] = (int) $t_project_access_level;
+						}
+					}
+				}
+
+				# Remove all the access levels that a user has
+				user_set_field( $t_user_id, 'access_level', 0 );
+				$t_projects = project_get_all_rows();
+				foreach ( $t_projects as $t_project ) {
+					if( project_includes_user( $t_project['id'], $t_user_id ) ) {
+						project_remove_user( $t_project['id'], $t_user_id );
+					}
+				}
+
+				# Finally set all the access levels
+				user_set_field( $t_user_id, 'access_level', $t_global_access_level );
+
+				foreach( $t_project_access_levels as $t_project_name => $t_project_access_level ) {
+					$t_project_id = project_get_id_by_name( $t_project_name );
+					project_set_user_access( $t_project_id, $t_user_id, $t_project_access_level );
+				}
+			}
 		}
 	}
 
@@ -390,6 +483,7 @@ function ldap_simulation_get_user( $p_username ) {
 		$t_user['realname'] = $t_row[1];
 		$t_user['email'] = $t_row[2];
 		$t_user['password'] = $t_row[3];
+		$t_user['access_level'] = array( $t_row[4] );
 
 		return $t_user;
 	}
@@ -430,6 +524,23 @@ function ldap_simulatiom_realname_from_username( $p_username ) {
 
 	log_event( LOG_LDAP, "ldap_simulatiom_realname_from_username: user '$p_username' has email '{$t_user['realname']}'." );
 	return $t_user['realname'];
+}
+
+/**
+ * Given a username, this methods gets the access_level or empty array if not found.
+ *
+ * @param string $p_username  The username.
+ * @return array The access levels or an empty array if not found.
+ */
+function ldap_simulatiom_access_level_from_username( $p_username ) {
+	$t_user = ldap_simulation_get_user( $p_username );
+	if ( $t_user === null ) {
+		log_event( LOG_LDAP, "ldap_simulatiom_access_level_from_username: user '$p_username' not found." );
+		return array();
+	}
+
+	log_event( LOG_LDAP, "ldap_simulatiom_access_level_from_username: user '$p_username' has access level '{$t_user['realname']}'." );
+	return $t_user['access_level'];
 }
 
 /**
