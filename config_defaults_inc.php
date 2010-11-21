@@ -1793,6 +1793,12 @@ $g_ldap_uid_field = 'uid';
 $g_ldap_realname_field = 'cn';
 
 /**
+ * The LDAP field for access levels.
+ * @global string $g_ldap_access_level_field
+ */
+$g_ldap_access_level_field = 'mantisAccessLevel';
+
+/**
  * The distinguished of the user account to use for binding to the LDAP server.
  * For example, 'CN=ldap,OU=Administrators,DC=example,DC=com'.
  *
@@ -1819,6 +1825,13 @@ $g_use_ldap_email = OFF;
  * @global int $g_use_ldap_realname
  */
 $g_use_ldap_realname = OFF;
+
+/**
+ * Whether or not to pull the access levels from LDAP.
+ * ON from LDAP, OFF from database.
+ * @global int $g_use_ldap_access_level
+ */
+$g_use_ldap_access_level = OFF;
 
 /**
  * The LDAP Protocol Version, if 0, then the protocol version is not set.  For
