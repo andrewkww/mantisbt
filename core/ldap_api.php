@@ -225,42 +225,20 @@ function ldap_escape_string( $p_string ) {
  */
 function ldap_get_field_from_username( $p_username, $p_field, $p_multi_valued = false ) {
 	$t_ldap_organization    = config_get( 'ldap_organization' );
-	$t_ldap_root_dn         = config_get( 'ldap_root_dn' );
 	$t_ldap_uid_field		= config_get( 'ldap_uid_field' );
 
 	$c_username = ldap_escape_string( $p_username );
 
-	# Bind
-	log_event( LOG_LDAP, "Binding to LDAP server" );
-	$t_ds = ldap_connect_bind();
-	if ( $t_ds === false ) {
-		log_event( LOG_LDAP, "ldap_connect_bind() returned false." );
-		return null;
-	}
-
-	# Search
+	# Build search filter and attrs
 	$t_search_filter        = "(&$t_ldap_organization($t_ldap_uid_field=$c_username))";
 	$t_search_attrs         = array( $t_ldap_uid_field, $p_field, 'dn' );
 
-	log_event( LOG_LDAP, "Searching for $t_search_filter" );
-	$t_sr = ldap_search( $t_ds, $t_ldap_root_dn, $t_search_filter, $t_search_attrs );
-	if ( $t_sr === false ) {
-		ldap_unbind( $t_ds );
-		log_event( LOG_LDAP, "ldap_search() returned false." );
-		return null;
-	}
-
-	# Get results
-	$t_info = ldap_get_entries( $t_ds, $t_sr );
+	# Perform search
+	$t_info = ldap_search_for_attrs( $t_search_filter, $t_search_attrs );
 	if ( $t_info === false ) {
 		log_event( LOG_LDAP, "ldap_get_entries() returned false." );
 		return null;
 	}
-
-	# Free results / unbind
-	log_event( LOG_LDAP, "Unbinding from LDAP server" );
-	ldap_free_result( $t_sr );
-	ldap_unbind( $t_ds );
 
 	# If no matches, return null.
 	if ( count( $t_info ) == 0 ) {
@@ -290,6 +268,45 @@ function ldap_get_field_from_username( $p_username, $p_field, $p_multi_valued = 
 	}
 
 	return $t_value;
+}
+
+/**
+ * Search LDAP for entries that satisfies the filter, and return the requested
+ * attributes. This basically performs a ldap_search and ldap_get_entries.
+ *
+ * @param string $p_search_filter The search filter.
+ * @param array $p_search_attrs The required attributes.
+ * @return mixed This returns the result of ldap_get_entries, which is a multi-dimensional array, and false on error.
+ */
+function ldap_search_for_attrs( $p_search_filter, $p_search_attrs ) {
+	$t_ldap_root_dn         = config_get( 'ldap_root_dn' );
+
+	# Bind
+	log_event( LOG_LDAP, "Binding to LDAP server" );
+	$t_ds = ldap_connect_bind();
+	if ( $t_ds === false ) {
+		log_event( LOG_LDAP, "ldap_connect_bind() returned false." );
+		return false;
+	}
+
+	# Search
+	log_event( LOG_LDAP, "Searching for $p_search_filter" );
+	$t_sr = ldap_search( $t_ds, $t_ldap_root_dn, $p_search_filter, $p_search_attrs );
+	if ( $t_sr === false ) {
+		ldap_unbind( $t_ds );
+		log_event( LOG_LDAP, "ldap_search() returned false." );
+		return false;
+	}
+
+	# Get results
+	$t_info = ldap_get_entries( $t_ds, $t_sr );
+
+	# Free results / unbind
+	log_event( LOG_LDAP, "Unbinding from LDAP server" );
+	ldap_free_result( $t_sr );
+	ldap_unbind( $t_ds );
+
+	return $t_info;
 }
 
 /**
