@@ -620,11 +620,14 @@ function config_is_private( $p_config_var ) {
 		case 'ldap_root_dn':
 		case 'ldap_organization':
 		case 'ldap_uid_field':
+		case 'ldap_group_object_class_field':
+		case 'ldap_group_member_field':
 		case 'ldap_access_level_field':
 		case 'ldap_bind_dn':
 		case 'ldap_bind_passwd':
 		case 'use_ldap_email':
 		case 'use_ldap_access_level':
+		case 'use_ldap_access_level_group':
 		case 'ldap_protocol_version':
 		case 'login_method':
 		case 'cookie_path':

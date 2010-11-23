@@ -1793,6 +1793,24 @@ $g_ldap_uid_field = 'uid';
 $g_ldap_realname_field = 'cn';
 
 /**
+ * The LDAP object class to search for a user's groups.
+ * @global string $g_ldap_group_object_class
+ */
+$g_ldap_group_object_class = 'groupOfNames';
+
+/**
+ * The LDAP field in the ldap_group_object_class that lists the group members.
+ * @global string $g_ldap_group_member_field
+ */
+$g_ldap_group_member_field = 'member';
+
+/**
+ * The LDAP field in the the user's entry that is associated with the value of the ldap_group_member_field.
+ * @global string $g_ldap_group_member_user_field
+ */
+$g_ldap_group_member_user_field = 'dn';
+
+/**
  * The LDAP field for access levels.
  * @global string $g_ldap_access_level_field
  */
@@ -1832,6 +1850,13 @@ $g_use_ldap_realname = OFF;
  * @global int $g_use_ldap_access_level
  */
 $g_use_ldap_access_level = OFF;
+
+/**
+ * Whether or not to pull the access levels from a user's groups in LDAP.
+ * ON from LDAP, OFF from database.
+ * @global int $g_use_ldap_access_level_group
+ */
+$g_use_ldap_access_level_group = OFF;
 
 /**
  * The LDAP Protocol Version, if 0, then the protocol version is not set.  For
