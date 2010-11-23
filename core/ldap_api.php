@@ -166,6 +166,52 @@ function ldap_realname_from_username( $p_username ) {
 }
 
 /**
+ * Gets a list of groups that a user belongs to given their user id.
+ *
+ * @param int $p_user_id  The user id.
+ * @return array The list of groups.
+ */
+function ldap_group_dn( $p_user_id ) {
+	$t_username = user_get_field( $p_user_id, 'username' );
+	return ldap_group_dn_from_username( $t_username );
+}
+
+/**
+ * Gets a list of groups that a user belongs to given their user name.
+ *
+ * @param string $p_username The user's name.
+ * @return array The list of groups.
+ */
+function ldap_group_dn_from_username( $p_username ) {
+	if ( ldap_simulation_is_enabled() ) {
+		return ldap_simulatiom_group_from_username( $p_username );
+	}
+
+	$t_ldap_group_object_class = config_get( 'ldap_group_object_class' );
+	$t_ldap_group_member_field = config_get( 'ldap_group_member_field' );
+	$t_ldap_group_member_user_field = config_get( 'ldap_group_member_user_field' );
+
+	# Find the value of the user field
+	$t_user = ldap_get_field_from_username( $p_username, $t_ldap_group_member_user_field );
+
+	# Use the value to search for other groups
+	$t_search_filter = "(&(objectClass=$t_ldap_group_object_class)($t_ldap_group_member_field=$t_user))";
+	$t_search_attrs = array( 'dn' );
+	$t_info = ldap_search_for_attrs( $t_search_filter, $t_search_attrs );
+	if ( $t_info === false ) {
+		return array();
+	}
+
+	$t_groups = array();
+	for ( $i = 0; $i < $t_info['count']; $i++ ) {
+		# dn is not an array
+		$t_groups[] = $t_info[$i]['dn'];
+	}
+
+	return $t_groups;
+}
+
+/**
  * Gets a user's access levels given the id.
  *
  * @param int $p_user_id  The user id.
