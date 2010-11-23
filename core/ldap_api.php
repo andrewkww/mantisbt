@@ -286,30 +286,43 @@ function ldap_get_field_from_username( $p_username, $p_field, $p_multi_valued = 
 		return null;
 	}
 
+	return ldap_get_field_from_entries( $t_info, $p_field, $p_multi_valued );
+}
+
+/**
+ * This utility function goes through the multi-dimensional array returned from
+ * ldap_get_entries, and pick out the field that we're interested in.
+ *
+ * @param array $p_info The multi-dimensional array returned from ldap_get_entries.
+ * @param string $p_field The LDAP field that we're interested in.
+ * @param bool $p_multi_valued optional Whether the entry is multi-valued.
+ * @return mixed The field value in string if single-value, or in array if multi-value. Returns null if not found.
+ */
+function ldap_get_field_from_entries( $p_info, $p_field, $p_multi_valued = false ) {
 	# If no matches, return null.
-	if ( count( $t_info ) == 0 ) {
+	if ( $p_info['count'] == 0 ) {
 		log_event( LOG_LDAP, "No matches found." );
 		return null;
 	}
 
 	# If the attribute doesn't exist, return null.
-	if ( !array_key_exists( $p_field, $t_info[0] ) ) {
+	if ( !array_key_exists( $p_field, $p_info[0] ) ) {
 		log_event( LOG_LDAP, "Matches found, but no requested attributes." );
 		return null;
 	}
 
 	if ( !$p_multi_valued ) {
 		# If the search field is "dn", then the result is not an array
-		if ( is_array( $t_info[0][$p_field] ) ) {
-			$t_value = $t_info[0][$p_field][0];
+		if ( is_array( $p_info[0][$p_field] ) ) {
+			$t_value = $p_info[0][$p_field][0];
 		} else {
-			$t_value = $t_info[0][$p_field];
+			$t_value = $p_info[0][$p_field];
 		}
 		log_event( LOG_LDAP, "Found value '{$t_value}' for field '{$p_field}'." );
 	} else {
 		$t_value = array();
-		for ( $i = 0; $i < $t_info[0][$p_field]['count']; $i++ ) {
-			$t_value[] = $t_info[0][$p_field][$i];
+		for ( $i = 0; $i < $p_info[0][$p_field]['count']; $i++ ) {
+			$t_value[] = $p_info[0][$p_field][$i];
 			log_event( LOG_LDAP, "Found value '{$t_value}' for field '{$p_field}'." );
 		}
 		# Return null if the entry doesn't exist
