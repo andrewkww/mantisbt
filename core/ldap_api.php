@@ -253,7 +253,12 @@ function ldap_get_field_from_username( $p_username, $p_field, $p_multi_valued = 
 	}
 
 	if ( !$p_multi_valued ) {
-		$t_value = $t_info[0][$p_field][0];
+		# If the search field is "dn", then the result is not an array
+		if ( is_array( $t_info[0][$p_field] ) ) {
+			$t_value = $t_info[0][$p_field][0];
+		} else {
+			$t_value = $t_info[0][$p_field];
+		}
 		log_event( LOG_LDAP, "Found value '{$t_value}' for field '{$p_field}'." );
 	} else {
 		$t_value = array();
