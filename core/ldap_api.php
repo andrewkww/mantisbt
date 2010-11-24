@@ -305,25 +305,28 @@ function ldap_get_field_from_entries( $p_info, $p_field, $p_multi_valued = false
 		return null;
 	}
 
+	# Indicies of the entries are lower case
+	$t_field = strtolower( $p_field );
+
 	# If the attribute doesn't exist, return null.
-	if ( !array_key_exists( $p_field, $p_info[0] ) ) {
+	if ( !array_key_exists( $t_field, $p_info[0] ) ) {
 		log_event( LOG_LDAP, "Matches found, but no requested attributes." );
 		return null;
 	}
 
 	if ( !$p_multi_valued ) {
 		# If the search field is "dn", then the result is not an array
-		if ( is_array( $p_info[0][$p_field] ) ) {
-			$t_value = $p_info[0][$p_field][0];
+		if ( is_array( $p_info[0][$t_field] ) ) {
+			$t_value = $p_info[0][$t_field][0];
 		} else {
-			$t_value = $p_info[0][$p_field];
+			$t_value = $p_info[0][$t_field];
 		}
-		log_event( LOG_LDAP, "Found value '{$t_value}' for field '{$p_field}'." );
+		log_event( LOG_LDAP, "Found value '{$t_value}' for field '{$t_field}'." );
 	} else {
 		$t_value = array();
-		for ( $i = 0; $i < $p_info[0][$p_field]['count']; $i++ ) {
-			$t_value[] = $p_info[0][$p_field][$i];
-			log_event( LOG_LDAP, "Found value '{$t_value}' for field '{$p_field}'." );
+		for ( $i = 0; $i < $p_info[0][$t_field]['count']; $i++ ) {
+			$t_value[] = $p_info[0][$t_field][$i];
+			log_event( LOG_LDAP, "Found value '{$t_value}' for field '{$t_field}'." );
 		}
 		# Return null if the entry doesn't exist
 		if ( !count( $t_value ) ) {
