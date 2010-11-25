@@ -243,6 +243,26 @@ function ldap_access_level_from_username( $p_username ) {
 }
 
 /**
+ * Gets access levels given the dn.
+ *
+ * @param string $p_dn The DN.
+ * @return array The access levels.
+ */
+function ldap_access_level_from_dn( $p_dn ) {
+	if ( ldap_simulation_is_enabled() ) {
+		return ldap_simulatiom_access_level_from_dn( $p_dn );
+	}
+
+	$t_ldap_access_level_field	= config_get( 'ldap_access_level_field' );
+	$t_access_level = ldap_get_field_from_dn( $p_dn, $t_ldap_access_level_field, true );
+	if ( $t_access_level === null ) {
+		return array();
+	}
+
+	return $t_access_level;
+}
+
+/**
  * Escapes the LDAP string to disallow injection.
  *
  * @param string $p_string The string to escape.
@@ -281,6 +301,29 @@ function ldap_get_field_from_username( $p_username, $p_field, $p_multi_valued = 
 
 	# Perform search
 	$t_info = ldap_search_for_attrs( $t_search_filter, $t_search_attrs );
+	if ( $t_info === false ) {
+		log_event( LOG_LDAP, "ldap_get_entries() returned false." );
+		return null;
+	}
+
+	return ldap_get_field_from_entries( $t_info, $p_field, $p_multi_valued );
+}
+
+/**
+ * Gets the value of a specific field from LDAP given the entry's dn.
+ *
+ * @param string $p_dn The entry's dn.
+ * @param string $p_field The LDAP field name.
+ * @param bool $p_multi_valued optional Whether the entry is multi-valued.
+ * @return mixed The field value in string if single-value, or in array if multi-value. Returns null if not found.
+ */
+function ldap_get_field_from_dn( $p_dn, $p_field, $p_multi_valued = false ) {
+	# Build search filter and attrs
+	$t_search_filter        = "$p_field=*";
+	$t_search_attrs         = array( $p_field, 'dn' );
+
+	# Perform search
+	$t_info = ldap_read_for_attrs( $p_dn, $t_search_filter, $t_search_attrs );
 	if ( $t_info === false ) {
 		log_event( LOG_LDAP, "ldap_get_entries() returned false." );
 		return null;
@@ -359,6 +402,44 @@ function ldap_search_for_attrs( $p_search_filter, $p_search_attrs ) {
 	# Search
 	log_event( LOG_LDAP, "Searching for $p_search_filter" );
 	$t_sr = ldap_search( $t_ds, $t_ldap_root_dn, $p_search_filter, $p_search_attrs );
+	if ( $t_sr === false ) {
+		ldap_unbind( $t_ds );
+		log_event( LOG_LDAP, "ldap_search() returned false." );
+		return false;
+	}
+
+	# Get results
+	$t_info = ldap_get_entries( $t_ds, $t_sr );
+
+	# Free results / unbind
+	log_event( LOG_LDAP, "Unbinding from LDAP server" );
+	ldap_free_result( $t_sr );
+	ldap_unbind( $t_ds );
+
+	return $t_info;
+}
+
+/**
+ * Read a LDAP entry for the specified attributes. This basically performs a 
+ * ldap_read and ldap_get_entries.
+ *
+ * @param string $p_base The LDAP entry to read from.
+ * @param string $p_filter The filter.
+ * @param array $p_attrs The required attributes.
+ * @return mixed This returns the result of ldap_get_entries, which is a multi-dimensional array, and false on error.
+ */
+function ldap_read_for_attrs( $p_base, $p_filter, $p_attrs ) {
+	# Bind
+	log_event( LOG_LDAP, "Binding to LDAP server" );
+	$t_ds = ldap_connect_bind();
+	if ( $t_ds === false ) {
+		log_event( LOG_LDAP, "ldap_connect_bind() returned false." );
+		return false;
+	}
+
+	# Search
+	log_event( LOG_LDAP, "Searching for $p_search_filter" );
+	$t_sr = ldap_read( $t_ds, $p_base, $p_filter, $p_attrs );
 	if ( $t_sr === false ) {
 		ldap_unbind( $t_ds );
 		log_event( LOG_LDAP, "ldap_search() returned false." );
@@ -484,6 +565,15 @@ function ldap_authenticate_by_username( $p_username, $p_password ) {
 			if ( ON == config_get( 'use_ldap_access_level' ) ) {
 				# Get access levels of the user
 				$t_access_levels = ldap_access_level_from_username( $p_username );
+
+				# Get access levels of the user's groups
+				$t_groups = ldap_group_dn_from_username( $p_username );
+				foreach ( $t_groups as $t_group ) {
+					$t_access_levels = array_merge(
+						$t_access_levels,
+						ldap_access_level_from_dn( $t_group )
+					);
+				}
 
 				# Find the maximum global and per-project access levels a user gets
 				$t_global_access_level = 0;
